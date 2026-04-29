@@ -1,0 +1,14 @@
+
+> frontend@0.1.0 build
+> react-scripts build
+
+Creating an optimized production build...
+Failed to compile.
+
+[eslint] 
+src\components\TrAddressSelect.tsx
+  Line 80:5:  Definition for rule 'react-hooks/exhaustive-deps' was not found  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each error.
+
+
