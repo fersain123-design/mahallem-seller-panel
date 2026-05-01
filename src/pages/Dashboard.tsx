@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { dashboardAPI } from '../services/api.ts';
+import { API_BASE_URL, dashboardAPI } from '../services/api.ts';
 import { DashboardStats } from '../types/index.ts';
 import { 
   Package, ShoppingCart,
@@ -9,6 +9,17 @@ import {
 } from 'lucide-react';
 
 const REFRESH_INTERVAL_MS = 30000;
+const DASHBOARD_ERROR_MESSAGE = 'İstatistikler şu anda yüklenemedi. Lütfen tekrar deneyin.';
+
+const EMPTY_DASHBOARD_STATS: DashboardStats = {
+  today: { orders: 0, revenue: 0 },
+  week: { orders: 0, revenue: 0 },
+  month: { orders: 0, revenue: 0 },
+  pending: { orders: 0 },
+  products: { total: 0, active: 0, low_stock: 0 },
+  recent_orders: [],
+  chart_data: [],
+};
 
 const formatCurrency = (value: number) =>
   `₺${Number(value || 0).toLocaleString('tr-TR', {
@@ -26,10 +37,102 @@ const getOrderCustomerLabel = (order: DashboardStats['recent_orders'][number]) =
   return 'Müşteri bilgisi yok';
 };
 
+const toFiniteNumber = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeStats = (raw: any): DashboardStats => ({
+  today: {
+    orders: toFiniteNumber(raw?.today?.orders),
+    revenue: toFiniteNumber(raw?.today?.revenue),
+  },
+  week: {
+    orders: toFiniteNumber(raw?.week?.orders),
+    revenue: toFiniteNumber(raw?.week?.revenue),
+  },
+  month: {
+    orders: toFiniteNumber(raw?.month?.orders),
+    revenue: toFiniteNumber(raw?.month?.revenue),
+  },
+  pending: {
+    orders: toFiniteNumber(raw?.pending?.orders),
+  },
+  products: {
+    total: toFiniteNumber(raw?.products?.total),
+    active: toFiniteNumber(raw?.products?.active),
+    low_stock: toFiniteNumber(raw?.products?.low_stock),
+  },
+  recent_orders: Array.isArray(raw?.recent_orders) ? raw.recent_orders : [],
+  chart_data: Array.isArray(raw?.chart_data) ? raw.chart_data : [],
+});
+
+const hasAnyStatsData = (stats: DashboardStats) => {
+  const hasNumberData =
+    stats.today.orders > 0 ||
+    stats.today.revenue > 0 ||
+    stats.week.orders > 0 ||
+    stats.week.revenue > 0 ||
+    stats.month.orders > 0 ||
+    stats.month.revenue > 0 ||
+    stats.pending.orders > 0 ||
+    stats.products.total > 0 ||
+    stats.products.active > 0 ||
+    stats.products.low_stock > 0;
+
+  return hasNumberData || stats.recent_orders.length > 0 || stats.chart_data.length > 0;
+};
+
+const detectEmptyVendorDataFromApi = async () => {
+  const token = localStorage.getItem('access_token');
+  if (!token) return false;
+
+  const apiRoot = String(API_BASE_URL || '').trim();
+  if (!apiRoot) return false;
+
+  const buildUrl = (path: string) => {
+    const normalizedRoot = apiRoot.endsWith('/') ? apiRoot : `${apiRoot}/`;
+    return new URL(path.replace(/^\//, ''), normalizedRoot).toString();
+  };
+
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/json',
+  };
+
+  try {
+    const [ordersResp, productsResp] = await Promise.all([
+      fetch(buildUrl('/api/vendor/orders?page=1&limit=1'), { headers }),
+      fetch(buildUrl('/api/vendor/products?page=1&limit=1'), { headers }),
+    ]);
+
+    if (!ordersResp.ok || !productsResp.ok) {
+      return false;
+    }
+
+    const [ordersJson, productsJson] = await Promise.all([
+      ordersResp.json().catch(() => null),
+      productsResp.json().catch(() => null),
+    ]);
+
+    const orderTotal = toFiniteNumber(
+      ordersJson?.data?.pagination?.total ?? ordersJson?.data?.orders?.length ?? 0
+    );
+    const productTotal = toFiniteNumber(
+      productsJson?.data?.pagination?.total ?? productsJson?.data?.products?.length ?? 0
+    );
+
+    return orderTotal === 0 && productTotal === 0;
+  } catch {
+    return false;
+  }
+};
+
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isEmptyState, setIsEmptyState] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
@@ -56,11 +159,30 @@ const Dashboard: React.FC = () => {
     try {
       setRefreshing(true);
       const response = await dashboardAPI.getStats();
-      setStats(response.data.data);
+
+      const normalized = normalizeStats(response?.data?.data);
+      const isEmpty = !hasAnyStatsData(normalized);
+
+      setStats(normalized);
+      setIsEmptyState(isEmpty);
       setError('');
       setLastUpdatedAt(new Date());
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'İstatistikler yüklenemedi');
+      console.error('[Dashboard] stats fetch failed', {
+        status: err?.response?.status,
+        message: err?.response?.data?.message || err?.message,
+      });
+
+      const emptyFromProbe = await detectEmptyVendorDataFromApi();
+
+      if (emptyFromProbe) {
+        setStats(EMPTY_DASHBOARD_STATS);
+        setIsEmptyState(true);
+        setError('');
+      } else {
+        setIsEmptyState(false);
+        setError(DASHBOARD_ERROR_MESSAGE);
+      }
     } finally {
       if (!silent) {
         setLoading(false);
@@ -98,6 +220,29 @@ const Dashboard: React.FC = () => {
           >
             Tekrar Dene
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isEmptyState) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <div className="bg-white border border-gray-100 rounded-xl p-8 max-w-xl text-center shadow-sm">
+          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Package className="w-8 h-8 text-primary" />
+          </div>
+          <h3 className="text-xl font-semibold text-text-primary mb-2">Henüz istatistik oluşmadı.</h3>
+          <p className="text-text-secondary">Ürün ve sipariş verileri oluştuğunda burada görüntülenecek.</p>
+          <div className="mt-5">
+            <Link
+              to="/products"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-600 transition-colors"
+            >
+              Ürün Eklemeye Başla
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
       </div>
     );

@@ -2,6 +2,8 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { productsAPI } from '../services/api.ts';
 import { Product } from '../types/index.ts';
 import ProductImagesField, { ProductImageItem, urlsToImageItems } from '../components/products/ProductImagesField.tsx';
+import ConfirmActionModal from '../components/common/ConfirmActionModal.tsx';
+import { extractApiErrorMessage, showErrorToast, showSuccessToast } from '../lib/feedback.ts';
 
 const SPECIAL_CATEGORY_NAME = 'Özel Ürünler';
 const LOW_STOCK_LEVEL = 5;
@@ -87,6 +89,7 @@ const ProductsAdvanced: React.FC = () => {
 
   const [images, setImages] = useState<ProductImageItem[]>([]);
   const [featureRows, setFeatureRows] = useState<string[]>(['']);
+  const [pendingDeleteProduct, setPendingDeleteProduct] = useState<Product | null>(null);
 
   const getApprovalStatus = (product: Product) => {
     const normalized = String(product.approval_status || '').toUpperCase();
@@ -253,14 +256,23 @@ const ProductsAdvanced: React.FC = () => {
 
   const handleDelete = async (product: Product) => {
     if (!product?.id) return;
-    if (!window.confirm(`"${product.name}" ürünü silinsin mi?`)) return;
+    setPendingDeleteProduct(product);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteProduct?.id) return;
 
     try {
-      await productsAPI.delete(product.id);
+      await productsAPI.delete(pendingDeleteProduct.id);
       setFormNotice({ type: 'success', text: 'Ürün başarıyla silindi.' });
+      showSuccessToast('Urun silindi');
       await fetchProducts();
     } catch (err: any) {
-      setFormNotice({ type: 'error', text: err?.response?.data?.detail || 'Silme işlemi başarısız' });
+      const message = extractApiErrorMessage(err, 'Silme islemi basarisiz');
+      setFormNotice({ type: 'error', text: message });
+      showErrorToast('Urun silinemedi', message);
+    } finally {
+      setPendingDeleteProduct(null);
     }
   };
 
@@ -761,6 +773,16 @@ const ProductsAdvanced: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeleteProduct)}
+        title="Ürünü silmek istiyor musun?"
+        description="Bu işlem geri alınamaz."
+        confirmLabel="Sil"
+        cancelLabel="Vazgeç"
+        onCancel={() => setPendingDeleteProduct(null)}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
   );
 };

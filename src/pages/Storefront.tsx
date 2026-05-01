@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE_URL, vendorAPI } from '../services/api.ts';
+import ConfirmActionModal from '../components/common/ConfirmActionModal.tsx';
+import { extractApiErrorMessage, showErrorToast, showSuccessToast } from '../lib/feedback.ts';
 
 const BUSINESS_TYPE_LABELS: Record<string, string> = {
   market_manav: 'Market & Manav',
@@ -125,6 +127,7 @@ const Storefront: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [data, setData] = useState<StorefrontData | null>(null);
+  const [pendingDeleteImageId, setPendingDeleteImageId] = useState<string | null>(null);
 
   const apiBase = API_BASE_URL;
 
@@ -237,15 +240,25 @@ const Storefront: React.FC = () => {
   };
 
   const handleDeleteImage = async (id: string) => {
-    if (!window.confirm('Fotoğraf silinsin mi?')) return;
+    setPendingDeleteImageId(id);
+  };
+
+  const confirmDeleteImage = async () => {
+    if (!pendingDeleteImageId) return;
+
     setError('');
     setSuccess('');
     try {
-      await vendorAPI.deleteStorefrontImage(id);
+      await vendorAPI.deleteStorefrontImage(pendingDeleteImageId);
       await refresh();
       setSuccess('Fotoğraf silindi');
+      showSuccessToast('Fotograf silindi');
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Silinemedi');
+      const message = extractApiErrorMessage(e, 'Fotograf silinemedi');
+      setError(message);
+      showErrorToast('Fotograf silinemedi', message);
+    } finally {
+      setPendingDeleteImageId(null);
     }
   };
 
@@ -689,6 +702,16 @@ const Storefront: React.FC = () => {
           </div>
         </>
       )}
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeleteImageId)}
+        title="Ürünü silmek istiyor musun?"
+        description="Bu işlem geri alınamaz."
+        confirmLabel="Sil"
+        cancelLabel="Vazgeç"
+        onCancel={() => setPendingDeleteImageId(null)}
+        onConfirm={() => void confirmDeleteImage()}
+      />
     </div>
   );
 };

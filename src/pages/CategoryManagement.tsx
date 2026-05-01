@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { vendorAPI } from '../services/api.ts';
+import ConfirmActionModal from '../components/common/ConfirmActionModal.tsx';
+import { extractApiErrorMessage, showErrorToast, showSuccessToast } from '../lib/feedback.ts';
 
 type VendorCategory = {
   id: string;
@@ -56,6 +58,7 @@ const CategoryManagement: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState(emptyForm);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [pendingDeleteCategoryId, setPendingDeleteCategoryId] = useState<string | null>(null);
 
   const businessType = String(vendor?.vendorProfile?.businessType || '').trim();
 
@@ -115,16 +118,24 @@ const CategoryManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Bu kategoriyi silmek istediginizden emin misiniz?')) return;
+    setPendingDeleteCategoryId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteCategoryId) return;
 
     try {
-      await vendorAPI.deleteCategory(id);
+      await vendorAPI.deleteCategory(pendingDeleteCategoryId);
       setMessage({ type: 'success', text: 'Kategori silindi.' });
-      if (editingId === id) resetForm();
+      showSuccessToast('Kategori silindi');
+      if (editingId === pendingDeleteCategoryId) resetForm();
       await fetchCategories();
     } catch (error: any) {
-      const text = error?.response?.data?.message || error?.response?.data?.detail || 'Silme islemi basarisiz';
+      const text = extractApiErrorMessage(error, 'Silme islemi basarisiz');
       setMessage({ type: 'error', text });
+      showErrorToast('Kategori silinemedi', text);
+    } finally {
+      setPendingDeleteCategoryId(null);
     }
   };
 
@@ -263,6 +274,16 @@ const CategoryManagement: React.FC = () => {
           </table>
         </div>
       </div>
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeleteCategoryId)}
+        title="Ürünü silmek istiyor musun?"
+        description="Bu işlem geri alınamaz."
+        confirmLabel="Sil"
+        cancelLabel="Vazgeç"
+        onCancel={() => setPendingDeleteCategoryId(null)}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
   );
 };

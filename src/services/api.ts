@@ -1,7 +1,41 @@
 import axios, { AxiosInstance } from 'axios';
 import { demoStore } from './demoStore.ts';
 
-export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+const PROD_API_BASE_URL = 'https://mahallem-backend-efdv.onrender.com';
+
+const isLocalOrPrivateHost = (host: string) => {
+  const normalized = String(host || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === 'localhost') return true;
+  if (normalized === '127.0.0.1') return true;
+  if (normalized.endsWith('.local')) return true;
+  if (/^10\./.test(normalized)) return true;
+  if (/^192\.168\./.test(normalized)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(normalized)) return true;
+  return false;
+};
+
+const resolveApiBaseUrl = () => {
+  const configured = String(process.env.REACT_APP_API_BASE_URL || '').trim();
+  if (!configured) return configured;
+
+  try {
+    const parsed = new URL(configured);
+    const isPanelRunningOnPublicHost =
+      typeof window !== 'undefined' &&
+      !isLocalOrPrivateHost(window.location.hostname);
+
+    if (isPanelRunningOnPublicHost && isLocalOrPrivateHost(parsed.hostname)) {
+      return PROD_API_BASE_URL;
+    }
+  } catch {
+    // Keep original value and let existing validations/errors surface naturally.
+  }
+
+  return configured;
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 if (!API_BASE_URL) {
   throw new Error('REACT_APP_API_BASE_URL eksik!');
@@ -814,7 +848,6 @@ apiClient.interceptors.response.use(
 // Auth API - Using existing backend endpoints
 export const authAPI = {
   login: (email: string, password: string) => {
-    console.log('API_BASE_URL:', API_BASE_URL);
     return apiClient.post('/api/auth/login', { email, password });
   },
 
@@ -986,7 +1019,6 @@ export const productsAPI = {
 
   lookupBarcode: async (barcode: string) => {
     const normalizedBarcode = String(barcode || '').replace(/\s+/g, '').trim();
-    console.log('[BARCODE] normalized barcode:', normalizedBarcode);
 
     const cached = barcodeLookupCache.get(normalizedBarcode);
     if (cached && Date.now() - cached.at <= BARCODE_LOOKUP_CLIENT_TTL_MS) {
@@ -1015,14 +1047,8 @@ export const productsAPI = {
           barcodeLookupCache.set(normalizedBarcode, { at: Date.now(), response });
         }
 
-        console.log('[BARCODE] external API lookup:', response?.data);
         return response;
       } catch (error: any) {
-        console.log('[BARCODE] external API lookup:', {
-          barcode: normalizedBarcode,
-          status: 'error',
-          message: String(error?.response?.data?.message || error?.message || 'Unknown barcode api error'),
-        });
         throw error;
       } finally {
         barcodeLookupInFlight.delete(normalizedBarcode);

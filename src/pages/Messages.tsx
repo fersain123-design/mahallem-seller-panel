@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supportAPI } from '../services/api.ts';
+import { extractApiErrorMessage, showErrorToast } from '../lib/feedback.ts';
 
 type SupportSenderRole = 'CUSTOMER' | 'VENDOR' | 'ADMIN';
 
@@ -50,7 +51,7 @@ const Messages: React.FC = () => {
       setReplyText('');
       await refresh();
     } catch (e: any) {
-      alert(e?.response?.data?.message || e?.message || 'Mesaj gönderilemedi');
+      showErrorToast('Mesaj gonderilemedi', extractApiErrorMessage(e, 'Lutfen tekrar deneyin.'));
     } finally {
       setSending(false);
     }

@@ -286,13 +286,6 @@ const Register: React.FC = () => {
 
     setLoading(true);
     try {
-      console.log('📝 Kayıt bilgileri gönderiliyor:', {
-        name: formData.owner_name,
-        email: formData.email,
-        phone: formData.phone,
-        role: 'VENDOR',
-      });
-      
       const registerRes = await authAPI.register({
         name: formData.owner_name.trim(),
         email: formData.email.trim(),
@@ -304,18 +297,14 @@ const Register: React.FC = () => {
         deliveryCoverage: formData.delivery_coverage,
       });
 
-      console.log('✓ Kayıt başarılı, yanıt:', registerRes.data);
-
       const responseData = registerRes.data?.data || registerRes.data;
       let token: string | undefined = responseData?.accessToken;
 
       // Bazı ortamlarda register response farklı şekillenebiliyor; token yoksa login ile fallback yap.
       if (!token) {
-        console.log('Token register yanıtında bulunamadı, login fallback\'i deneniyor...');
         const loginRes = await authAPI.login(formData.email, formData.password);
         const loginData = loginRes.data?.data || loginRes.data;
         token = loginData?.accessToken || loginData?.access_token;
-        console.log('✓ Login başarılı, token alındı');
       }
 
       if (!token) {
@@ -338,7 +327,6 @@ const Register: React.FC = () => {
 
       const fileToBase64 = (file: File) =>
         new Promise<string>((resolve, reject) => {
-          console.log(`📄 Dosya okunuyor: ${file.name} (${(file.size / 1024).toFixed(2)}KB)`);
           if (file.size > 10 * 1024 * 1024) {
             reject(new Error(`Dosya çok büyük (max 10MB): ${(file.size / 1024 / 1024).toFixed(2)}MB`));
             return;
@@ -350,7 +338,6 @@ const Register: React.FC = () => {
           };
           reader.onload = () => {
             const result = String(reader.result || '');
-            console.log(`✓ Dosya başarıyla okundu: ${result.length} karakter`);
             resolve(result);
           };
           reader.readAsDataURL(file);
@@ -366,16 +353,13 @@ const Register: React.FC = () => {
 
         if (idPhotoFrontFile) {
           try {
-            console.log('🚀 Kimlik ön yüz yükleme başlıyor...');
             const contentBase64 = await fileToBase64(idPhotoFrontFile);
-            console.log('📤 Backend\'e gönderiliyor...');
             const uploadRes = await vendorAPI.uploadDocument({
               filename: idPhotoFrontFile.name,
               contentBase64,
               type: 'id_front',
             });
             idPhotoFrontUrl = uploadRes.data?.data?.url || uploadRes.data?.url;
-            console.log('✓ Kimlik ön yüz yüklendi:', idPhotoFrontUrl);
           } catch (err) {
             console.error('✗ Kimlik ön yüz yükleme hatası:', {
               message: (err as any)?.message,
@@ -389,16 +373,13 @@ const Register: React.FC = () => {
 
         if (idPhotoBackFile) {
           try {
-            console.log('🚀 Kimlik arka yüz yükleme başlıyor...');
             const contentBase64 = await fileToBase64(idPhotoBackFile);
-            console.log('📤 Backend\'e gönderiliyor...');
             const uploadRes = await vendorAPI.uploadDocument({
               filename: idPhotoBackFile.name,
               contentBase64,
               type: 'id_back',
             });
             idPhotoBackUrl = uploadRes.data?.data?.url || uploadRes.data?.url;
-            console.log('✓ Kimlik arka yüz yüklendi:', idPhotoBackUrl);
           } catch (err) {
             console.error('✗ Kimlik arka yüz yükleme hatası:', {
               message: (err as any)?.message,
@@ -411,15 +392,12 @@ const Register: React.FC = () => {
 
         if (taxSheetFile) {
           try {
-            console.log('🚀 Vergi müfettişliği belgesi yükleme başlıyor...');
             const contentBase64 = await fileToBase64(taxSheetFile);
-            console.log('📤 Backend\'e gönderiliyor...');
             const uploadRes = await vendorAPI.uploadTaxSheet({
               filename: taxSheetFile.name,
               contentBase64,
             });
             taxSheetUrl = uploadRes.data?.data?.url || uploadRes.data?.url;
-            console.log('✓ Vergi müfettişliği belgesi yüklendi:', taxSheetUrl);
           } catch (err) {
             console.error('✗ Vergi müfettişliği belgesi yükleme hatası:', {
               message: (err as any)?.message,
@@ -432,16 +410,13 @@ const Register: React.FC = () => {
 
         if (residenceDocFile) {
           try {
-            console.log('🚀 İkamet belgesi yükleme başlıyor...');
             const contentBase64 = await fileToBase64(residenceDocFile);
-            console.log('📤 Backend\'e gönderiliyor...');
             const uploadRes = await vendorAPI.uploadDocument({
               filename: residenceDocFile.name,
               contentBase64,
               type: 'residence',
             });
             residenceDocUrl = uploadRes.data?.data?.url || uploadRes.data?.url;
-            console.log('✓ İkamet belgesi yüklendi:', residenceDocUrl);
           } catch (err) {
             console.error('✗ İkamet belgesi yükleme hatası:', {
               message: (err as any)?.message,
@@ -452,7 +427,6 @@ const Register: React.FC = () => {
           }
         }
 
-        console.log('🔄 Profil güncelleniyor...');
         await vendorAPI.updateProfile({
           shopName: formData.store_name,
           address,
@@ -470,7 +444,6 @@ const Register: React.FC = () => {
           idPhotoFrontUrl,
           idPhotoBackUrl,
         });
-        console.log('✓ Profil güncellendi, tüm belgeler kaydedildi');
       } catch (enrichErr: any) {
         const msg = getAuthErrorMessage(enrichErr, 'Profil/belge bilgileri kaydedilemedi');
         console.error('Belge yükleme/profil güncelleme hatası:', enrichErr?.response?.data || enrichErr);

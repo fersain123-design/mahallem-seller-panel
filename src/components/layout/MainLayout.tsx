@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar.tsx';
 import Topbar from './Topbar.tsx';
 import { useAuth } from '../../context/AuthContext.tsx';
+import AppToaster from '../common/AppToaster.tsx';
 
 const MainLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -17,6 +18,7 @@ const MainLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen seller-app-bg">
+      <AppToaster />
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}

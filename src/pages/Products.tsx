@@ -4,6 +4,8 @@ import { Product } from '../types/index.ts';
 import ProductImagesField, { ProductImageItem, urlsToImageItems } from '../components/products/ProductImagesField.tsx';
 import { useSellerSearch } from '../context/SellerSearchContext.tsx';
 import { useAuth } from '../context/AuthContext.tsx';
+import ConfirmActionModal from '../components/common/ConfirmActionModal.tsx';
+import { extractApiErrorMessage, showErrorToast, showSuccessToast } from '../lib/feedback.ts';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -531,6 +533,8 @@ const Products: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkWorking, setBulkWorking] = useState(false);
   const [processingProductIds, setProcessingProductIds] = useState<string[]>([]);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
 
   const [formData, setFormData] = useState(emptyForm);
   const [metaData, setMetaData] = useState<ProductMetaV1>(emptyMeta);
@@ -734,6 +738,33 @@ const Products: React.FC = () => {
   const allVisibleSelected =
     filteredProducts.length > 0 && filteredProducts.every((product) => selectedIds.includes(product.id));
 
+  const productTableRows = useMemo(
+    () =>
+      filteredProducts.map((product) => {
+        const parsed = parseDescriptionWithMeta(product.description);
+        const resolvedCategoryName = resolveProductSubCategoryName(product);
+        const processingStatus = resolveProcessingStatus(product);
+        const isProcessing = processingStatus === 'processing';
+        const unitLabel = formatNetWeightLabel(parsed.meta, product.unit);
+        const stockUnit = String(product.unit || '').trim();
+        const isOutOfStock = Number(product.stock || 0) <= 0;
+        const isSelected = selectedIds.includes(product.id);
+
+        return {
+          product,
+          parsed,
+          resolvedCategoryName,
+          processingStatus,
+          isProcessing,
+          unitLabel,
+          stockUnit,
+          isOutOfStock,
+          isSelected,
+        };
+      }),
+    [filteredProducts, selectedIds, subCategoryNameById]
+  );
+
   useEffect(() => {
     fetchProducts();
   }, []);
@@ -834,24 +865,6 @@ const Products: React.FC = () => {
       }
     }
   };
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      void fetchProducts({ background: true });
-    }, 15000);
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void fetchProducts({ background: true });
-      }
-    };
-
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, []);
 
   const fetchVendorCategories = async () => {
     const businessTypeKey = normalizeSearchText(resolveVendorBusinessType(vendor) || 'unknown');
@@ -1014,9 +1027,6 @@ const Products: React.FC = () => {
     setAddProductMode(mode);
     applyDefaultSubCategorySelection();
     setShowModal(true);
-    if (mode === 'barcode') {
-      console.log('BARKOD_EKRANI_ACILDI');
-    }
   };
 
   const handleOpenAddProductMenu = () => {
@@ -1090,8 +1100,6 @@ const Products: React.FC = () => {
     if (videoElement) {
       videoElement.srcObject = null;
     }
-
-    console.log('BARKOD_KAMERA_DURDURULDU');
   };
 
   const handleLookupBarcode = async (incomingBarcode?: string, fromCamera: boolean = false) => {
@@ -1147,22 +1155,9 @@ const Products: React.FC = () => {
     });
     setDuplicateBarcodePrompt({ visible: false, productId: '', message: '' });
 
-    console.log('[BARCODE] scanned barcode:', String(incomingBarcode ?? barcodeInput ?? ''));
-    console.log('[BARCODE] normalized barcode:', normalizedBarcode);
-    console.log('[BARCODE] validation result:', {
-      barcode: normalizedBarcode,
-      isValid: true,
-      reason: 'client_valid',
-    });
-    console.log('[BARCODE] local DB lookup:', {
-      barcode: normalizedBarcode,
-      fromCamera,
-    });
-
     try {
       lastLookupRef.current = { barcode: normalizedBarcode, at: now };
       const response = await productsAPI.lookupBarcode(normalizedBarcode);
-      console.log('[BARCODE] external API lookup:', response?.data);
       const lookupPayload = response?.data?.data;
       const responseNormalizedBarcode = normalizeBarcodeInput(lookupPayload?.normalizedBarcode || normalizedBarcode);
       const found = Boolean(lookupPayload?.found);
@@ -1196,7 +1191,6 @@ const Products: React.FC = () => {
           confidence: 0,
           matchedKeywords: [],
         });
-        console.log('[BARCODE] manual fallback opened with barcode:', responseNormalizedBarcode);
         if (fromCamera) {
           setBarcodeScannerState('not-found');
         }
@@ -1296,14 +1290,6 @@ const Products: React.FC = () => {
           ? BARCODE_INVALID_MESSAGE
           : fallbackMessage;
 
-      console.log('[BARCODE] external API lookup:', {
-        barcode: normalizedBarcode,
-        code: errorCode,
-        timeoutError,
-        status: 'error',
-        message: effectiveMessage,
-      });
-
       setBarcodeLookupMessage({ type: 'error', text: effectiveMessage });
       setFormNotice({ type: 'error', text: effectiveMessage });
       setMetaData((prev) => ({ ...prev, barcode: normalizedBarcode }));
@@ -1397,7 +1383,6 @@ const Products: React.FC = () => {
       setBarcodeScannerError(null);
       setBarcodeScannerState('ready');
       isBarcodeLoopActiveRef.current = true;
-      console.log('BARKOD_KAMERA_HAZIR');
 
       const scanFrame = async () => {
         if (!isBarcodeLoopActiveRef.current) return;
@@ -1425,10 +1410,6 @@ const Products: React.FC = () => {
                 lastScanEventRef.current = { barcode: detectedRawValue, at: now };
                 setBarcodeInput(detectedRawValue);
                 setBarcodeScannerState('detected');
-                console.log('BARKOD_OKUNDU', {
-                  type: String(detections[0]?.format || 'unknown'),
-                  data: detectedRawValue,
-                });
                 void handleLookupBarcode(detectedRawValue, true);
 
                 window.setTimeout(() => {
@@ -1443,7 +1424,6 @@ const Products: React.FC = () => {
           if (isBarcodeLoopActiveRef.current) {
             setBarcodeScannerState('error');
             setBarcodeScannerError('Barkod okunurken bir hata oluştu.');
-            console.log('BARKOD_ARAMA_HATASI', { reason: 'scanner_detect_error' });
           }
         }
 
@@ -1460,13 +1440,18 @@ const Products: React.FC = () => {
     } catch {
       setBarcodeScannerState('error');
       setBarcodeScannerError('Kamera erişimi sağlanamadı. Bilgisayarda webcam izinlerini kontrol edip tekrar deneyin.');
-      console.log('BARKOD_KAMERA_HATASI', { reason: 'camera_start_failed' });
       stopBarcodeScanner();
     }
   };
 
   useEffect(() => {
-    if (!showModal || addProductMode !== 'barcode' || Boolean(editingProduct)) {
+    if (
+      !showModal ||
+      addProductMode !== 'barcode' ||
+      Boolean(editingProduct) ||
+      isManualBarcodeInputOpen ||
+      document.visibilityState !== 'visible'
+    ) {
       stopBarcodeScanner();
       return;
     }
@@ -1475,7 +1460,7 @@ const Products: React.FC = () => {
     return () => {
       stopBarcodeScanner();
     };
-  }, [showModal, addProductMode, editingProduct]);
+  }, [showModal, addProductMode, editingProduct, isManualBarcodeInputOpen]);
 
   useEffect(() => {
     return () => {
@@ -1625,16 +1610,23 @@ const Products: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Bu ürünü silmek istediğinizden emin misiniz?')) return;
+    setPendingDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return;
 
     try {
-      await productsAPI.delete(id);
+      await productsAPI.delete(pendingDeleteId);
       setNotice({ type: 'success', text: 'Ürün silindi.' });
+      showSuccessToast('Urun silindi');
       fetchProducts();
     } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Silme işlemi başarısız';
+      const msg = extractApiErrorMessage(err, 'Silme islemi basarisiz');
       setNotice({ type: 'error', text: msg });
-      alert(msg);
+      showErrorToast('Urun silinemedi', msg);
+    } finally {
+      setPendingDeleteId(null);
     }
   };
 
@@ -2031,17 +2023,27 @@ const Products: React.FC = () => {
 
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0 || bulkWorking) return;
-    if (!window.confirm(`${selectedIds.length} ürün kalıcı olarak silinsin mi?`)) return;
+    setPendingBulkDelete(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    if (selectedIds.length === 0 || bulkWorking) {
+      setPendingBulkDelete(false);
+      return;
+    }
 
     setBulkWorking(true);
     try {
       await Promise.all(selectedIds.map((id) => productsAPI.delete(id)));
       setNotice({ type: 'success', text: `${selectedIds.length} ürün silindi.` });
+      showSuccessToast('Toplu silme tamamlandi', `${selectedIds.length} urun silindi.`);
       await fetchProducts();
-    } catch {
+    } catch (err: any) {
       setNotice({ type: 'error', text: 'Toplu silme sırasında hata oluştu.' });
+      showErrorToast('Toplu silme basarisiz', extractApiErrorMessage(err, 'Lutfen tekrar deneyin.'));
     } finally {
       setBulkWorking(false);
+      setPendingBulkDelete(false);
     }
   };
 
@@ -2241,7 +2243,11 @@ const Products: React.FC = () => {
             </div>
           </div>
         )}
-        {filteredProducts.length > 0 ? (
+        {showModal ? (
+          <div className="p-6 text-center text-sm text-text-secondary">
+            Urun listesi acik form performansi icin arka planda sabitlendi.
+          </div>
+        ) : filteredProducts.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-background/60">
@@ -2259,20 +2265,24 @@ const Products: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredProducts.map((product) => {
-                  const parsed = parseDescriptionWithMeta(product.description);
-                  const resolvedCategoryName = resolveProductSubCategoryName(product);
-                  const processingStatus = resolveProcessingStatus(product);
-                  const isProcessing = processingStatus === 'processing';
-                  const unitLabel = formatNetWeightLabel(parsed.meta, product.unit);
-                  const stockUnit = String(product.unit || '').trim();
-                  const isOutOfStock = Number(product.stock || 0) <= 0;
+                {productTableRows.map((row) => {
+                  const {
+                    product,
+                    parsed,
+                    resolvedCategoryName,
+                    processingStatus,
+                    isProcessing,
+                    unitLabel,
+                    stockUnit,
+                    isOutOfStock,
+                    isSelected,
+                  } = row;
                   return (
                     <tr key={product.id} className="hover:bg-background-cream/50 transition-colors">
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
-                          checked={selectedIds.includes(product.id)}
+                          checked={isSelected}
                           onChange={() => toggleRowSelection(product.id)}
                         />
                       </td>
@@ -2805,6 +2815,30 @@ const Products: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeleteId)}
+        title="Ürünü silmek istiyor musun?"
+        description="Bu işlem geri alınamaz."
+        confirmLabel="Sil"
+        cancelLabel="Vazgeç"
+        onCancel={() => setPendingDeleteId(null)}
+        onConfirm={() => void confirmDelete()}
+      />
+
+      <ConfirmActionModal
+        open={pendingBulkDelete}
+        title="Ürünü silmek istiyor musun?"
+        description="Bu işlem geri alınamaz."
+        confirmLabel="Sil"
+        cancelLabel="Vazgeç"
+        busy={bulkWorking}
+        onCancel={() => {
+          if (bulkWorking) return;
+          setPendingBulkDelete(false);
+        }}
+        onConfirm={() => void confirmBulkDelete()}
+      />
     </div>
   );
 };

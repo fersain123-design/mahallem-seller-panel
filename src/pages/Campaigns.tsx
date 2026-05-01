@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import apiClient from '../services/api.ts';
 import ProductDiscountSection from '../components/campaigns/ProductDiscountSection.tsx';
+import ConfirmActionModal from '../components/common/ConfirmActionModal.tsx';
+import { extractApiErrorMessage, showErrorToast, showSuccessToast } from '../lib/feedback.ts';
 
 type CampaignStatus = 'PENDING' | 'ACTIVE' | 'REJECTED' | 'EXPIRED' | 'PASSIVE';
 
@@ -129,6 +131,7 @@ const Campaigns: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'ALL' | CampaignStatus>('ALL');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [pendingDeleteCampaignId, setPendingDeleteCampaignId] = useState<string | null>(null);
 
   const fetchCampaigns = async () => {
     try {
@@ -275,15 +278,24 @@ const Campaigns: React.FC = () => {
   };
 
   const deleteCampaign = async (id: string) => {
-    if (!window.confirm('Kampanyayı silmek istediğinize emin misiniz?')) return;
+    setPendingDeleteCampaignId(id);
+  };
+
+  const confirmDeleteCampaign = async () => {
+    if (!pendingDeleteCampaignId) return;
 
     try {
-      await apiClient.delete(`/api/vendor/seller-campaigns/${id}`);
+      await apiClient.delete(`/api/vendor/seller-campaigns/${pendingDeleteCampaignId}`);
       setSuccess('Kampanya silindi.');
+      showSuccessToast('Kampanya silindi');
       await fetchCampaigns();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Kampanya silinemedi.');
+      const message = extractApiErrorMessage(err, 'Kampanya silinemedi.');
+      setError(message);
+      showErrorToast('Kampanya silinemedi', message);
+    } finally {
+      setPendingDeleteCampaignId(null);
     }
   };
 
@@ -534,6 +546,16 @@ const Campaigns: React.FC = () => {
       </div>
         </>
       )}
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeleteCampaignId)}
+        title="Ürünü silmek istiyor musun?"
+        description="Bu işlem geri alınamaz."
+        confirmLabel="Sil"
+        cancelLabel="Vazgeç"
+        onCancel={() => setPendingDeleteCampaignId(null)}
+        onConfirm={() => void confirmDeleteCampaign()}
+      />
     </div>
   );
 };

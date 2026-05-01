@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { multiChannelAPI } from '../services/api.ts';
+import { extractApiErrorMessage, showErrorToast, showSuccessToast } from '../lib/feedback.ts';
 
 interface Channel {
   id: string;
@@ -133,13 +134,13 @@ const MultiChannel: React.FC = () => {
         )
       );
       
-      alert(`${selectedChannel.name} başarıyla aktifleştirildi!`);
+      showSuccessToast('Kanal aktiflestirildi', `${selectedChannel.name} basariyla aktiflestirildi.`);
       setShowSetupModal(false);
       setSelectedChannel(null);
       setSetupFormData({});
     } catch (error: any) {
       console.error('Error activating channel:', error);
-      alert(error.response?.data?.detail || 'Kanal aktifleştirilemedi. Lütfen tekrar deneyin.');
+      showErrorToast('Kanal aktiflestirilemedi', extractApiErrorMessage(error, 'Lutfen tekrar deneyin.'));
     } finally {
       setLoading(false);
     }

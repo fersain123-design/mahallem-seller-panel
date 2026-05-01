@@ -14,6 +14,7 @@ import {
   CalendarDays,
   RefreshCcw,
 } from 'lucide-react';
+import { extractApiErrorMessage, showErrorToast, showSuccessToast } from '../lib/feedback.ts';
 
 type PayoutStatus = 'PAID' | 'PROCESSING' | 'PENDING' | 'CANCELLED' | string;
 
@@ -218,24 +219,24 @@ const Payments: React.FC = () => {
     if (!amount || Number.isNaN(amount) || amount < 500) return;
 
     if (amount > withdrawableAmount) {
-      alert('Çekim tutarı çekilebilir tutarı aşamaz.');
+      showErrorToast('Gecersiz cekim tutari', 'Cekim tutari cekilebilir tutari asamaz.');
       return;
     }
 
     if (!iban) {
-      alert('Para çekmek için önce bu sayfada IBAN bilgilerinizi kaydedin.');
+      showErrorToast('IBAN gerekli', 'Para cekmek icin once bu sayfada IBAN bilgilerinizi kaydedin.');
       return;
     }
 
     try {
       await vendorAPI.createPayoutRequest(Number(amount.toFixed(2)));
 
-      alert(`Çekim talebiniz başarıyla alındı. ${PAYOUT_POLICY_SHORT}`);
+      showSuccessToast('Cekim talebi alindi', PAYOUT_POLICY_SHORT);
       setShowWithdrawModal(false);
       setWithdrawAmount('');
       await refresh();
-    } catch {
-      alert('Çekim talebi gönderilemedi.');
+    } catch (err: any) {
+      showErrorToast('Cekim talebi gonderilemedi', extractApiErrorMessage(err, 'Lutfen tekrar deneyin.'));
     }
   };
 

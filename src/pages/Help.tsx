@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { supportAPI } from '../services/api.ts';
+import { extractApiErrorMessage, showErrorToast, showSuccessToast } from '../lib/feedback.ts';
 
 const PAYMENT_POLICY_MESSAGE =
   'Yeni ödeme sistemine geçiş sürecinde çekim talepleri en geç 14 gün içinde kayıtlı IBAN hesabınıza aktarılır. Durum adımları: Beklemede > İşleniyor > Ödendi.';
@@ -23,17 +24,17 @@ const Help: React.FC = () => {
       const convoRes = await supportAPI.getMyConversation();
       const conversationId = convoRes?.data?.data?.id;
       if (!conversationId) {
-        alert('Yardım sohbeti başlatılamadı.');
+        showErrorToast('Yardim sohbeti baslatilamadi', 'Lutfen biraz sonra tekrar deneyin.');
         return;
       }
 
       const body = `Konu: ${subject}\n\n${message}`;
       await supportAPI.postMyMessage(conversationId, body);
 
-      alert('Mesajınız iletildi. Admin paneline düştü.');
+      showSuccessToast('Mesajiniz iletildi', 'Destek ekibine gonderildi.');
       setSupportTicket({ subject: '', message: '' });
-    } catch (e) {
-      alert('Mesaj gönderilemedi. Lütfen tekrar deneyin.');
+    } catch (e: any) {
+      showErrorToast('Mesaj gonderilemedi', extractApiErrorMessage(e, 'Lutfen tekrar deneyin.'));
     } finally {
       setIsSubmitting(false);
     }

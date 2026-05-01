@@ -2,6 +2,48 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ordersAPI, supportAPI } from '../services/api.ts';
 import { Order } from '../types/index.ts';
 import { useSellerSearch } from '../context/SellerSearchContext.tsx';
+import ConfirmActionModal from '../components/common/ConfirmActionModal.tsx';
+import { extractApiErrorMessage, showErrorToast, showSuccessToast } from '../lib/feedback.ts';
+
+const getAuthSnapshot = () => {
+  const token = String(localStorage.getItem('access_token') || '').trim();
+  const rawUser = localStorage.getItem('user');
+
+  if (!rawUser) {
+    return { token, sellerId: '' };
+  }
+
+  try {
+    const parsed: any = JSON.parse(rawUser);
+    const sellerId = String(
+      parsed?.vendorProfile?.id || parsed?.vendor_profile?.id || parsed?.id || ''
+    ).trim();
+    return { token, sellerId };
+  } catch {
+    return { token, sellerId: '' };
+  }
+};
+
+const getOrdersLoadErrorMessage = (err: any) => {
+  const status = Number(err?.response?.status || 0);
+  const detail = String(
+    err?.response?.data?.message || err?.response?.data?.detail || ''
+  ).trim();
+
+  if (status === 401 || status === 403) {
+    return 'Oturumunuz gecersiz veya suresi dolmus. Lutfen tekrar giris yapin.';
+  }
+
+  if (!status) {
+    return 'Siparisler yuklenmedi. Sunucuya baglanti kurulamadi.';
+  }
+
+  if (detail) {
+    return `Siparisler yuklenmedi. ${detail}`;
+  }
+
+  return 'Siparisler yuklenmedi.';
+};
 
 const formatCurrency = (amount: number) =>
   `₺${Number(amount || 0).toLocaleString('tr-TR', {
@@ -389,6 +431,7 @@ const Orders: React.FC = () => {
   const [returnError, setReturnError] = useState('');
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<OrderFilter>('all');
+  const [deliverConfirmOrder, setDeliverConfirmOrder] = useState<Order | null>(null);
   const { query: searchQuery } = useSellerSearch();
 
   useEffect(() => {
@@ -401,10 +444,41 @@ const Orders: React.FC = () => {
         setLoading(true);
       }
       setError('');
+
+      const { token, sellerId } = getAuthSnapshot();
+      if (!token) {
+        setOrders([]);
+        setError('Oturum bilgisi bulunamadi. Lutfen tekrar giris yapin.');
+        return;
+      }
+
+      if (!sellerId) {
+        setOrders([]);
+        setError('Satici bilgisi eksik. Lutfen cikis yapip tekrar giris yapin.');
+        return;
+      }
+
       const response = await ordersAPI.getAll();
-      setOrders(response.data.data.orders);
+      const payload = response?.data?.data;
+      const responseOrders = Array.isArray(payload?.orders) ? payload.orders : [];
+      const countCandidates = [
+        payload?.totalOrders,
+        payload?.total,
+        payload?.count,
+        payload?.pagination?.total,
+      ];
+      const reportedTotal = countCandidates.find(
+        (value) => Number.isFinite(Number(value)) && Number(value) >= 0
+      );
+
+      if (Number(reportedTotal) === 0 || responseOrders.length === 0) {
+        setOrders([]);
+        return;
+      }
+
+      setOrders(responseOrders);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Siparişler yüklenemedi');
+      setError(getOrdersLoadErrorMessage(err));
     } finally {
       if (!options?.silent) {
         setLoading(false);
@@ -459,7 +533,7 @@ const Orders: React.FC = () => {
     } catch (err: any) {
       setOrders(previousOrders);
       setSelectedOrder(previousSelectedOrder);
-      alert(err?.response?.data?.message || err?.response?.data?.detail || 'Durum güncellenemedi');
+      showErrorToast('Siparis durumu guncellenemedi', extractApiErrorMessage(err, 'Lutfen tekrar deneyin.'));
     } finally {
       setUpdatingOrderId(null);
     }
@@ -506,8 +580,8 @@ const Orders: React.FC = () => {
     }
 
     if (nextStatus === 'delivered') {
-      const ok = window.confirm('Siparişi teslim edildi olarak işaretlemek istiyor musunuz?');
-      if (!ok) return;
+      setDeliverConfirmOrder(order);
+      return;
     }
 
     await handleStatusUpdate(order.id, nextStatus, note || undefined);
@@ -556,9 +630,9 @@ const Orders: React.FC = () => {
       setReturnTargetOrder(null);
       setReturnReasonTitle('');
       setReturnReason('');
-      alert('İade talebi destek ekibine iletildi.');
+      showSuccessToast('Iade talebi alindi', 'Destek ekibine iletildi.');
     } catch (err: any) {
-      setReturnError(err?.response?.data?.message || err?.response?.data?.detail || 'İade talebi gönderilemedi');
+      setReturnError(extractApiErrorMessage(err, 'Iade talebi gonderilemedi'));
     } finally {
       setUpdatingOrderId(null);
     }
@@ -607,7 +681,9 @@ const Orders: React.FC = () => {
             <span className="font-bold text-text-primary">{filteredOrders.length}</span>
           </div>
           <button
-            onClick={fetchOrders}
+            onClick={() => {
+              void fetchOrders();
+            }}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-black/10 rounded-lg hover:bg-gray-50 hover:border-black/15 transition-all text-sm font-semibold text-text-primary"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -618,10 +694,10 @@ const Orders: React.FC = () => {
         </div>
       </div>
 
-      {error && <div className="seller-surface p-4 border border-error/40 bg-error/5 text-error">{error}</div>}
-
       <div className="space-y-4">
-        {filteredOrders.length > 0 ? (
+        {error ? (
+          <div className="seller-surface p-4 border border-error/40 bg-error/5 text-error">{error}</div>
+        ) : filteredOrders.length > 0 ? (
           filteredOrders.map((order) => {
             const primaryAction = getPrimaryAction(order);
             const canCancel = getNextStatuses(order.status).includes('cancelled');
@@ -767,7 +843,8 @@ const Orders: React.FC = () => {
           })
         ) : (
           <div className="rounded-xl border border-dashed border-black/10 bg-background/50 px-4 py-8 text-center">
-            <p className="text-sm font-semibold text-text-primary">Sipariş bulunamadı</p>
+            <p className="text-sm font-semibold text-text-primary">Henüz sipariş bulunamadı.</p>
+            <p className="mt-1 text-sm text-text-secondary">Yeni siparişler geldiğinde burada görüntülenecek.</p>
           </div>
         )}
       </div>
@@ -1220,6 +1297,25 @@ const Orders: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmActionModal
+        open={Boolean(deliverConfirmOrder)}
+        title="Siparisi teslim edildi olarak isaretlemek istiyor musun?"
+        description="Bu islem sonrasinda siparis tamamlanmis olarak gorunecek."
+        confirmLabel="Evet, teslim edildi"
+        cancelLabel="Vazgeç"
+        busy={Boolean(updatingOrderId && deliverConfirmOrder?.id === updatingOrderId)}
+        onCancel={() => {
+          if (updatingOrderId) return;
+          setDeliverConfirmOrder(null);
+        }}
+        onConfirm={() => {
+          if (!deliverConfirmOrder) return;
+          const note = selectedOrder?.id === deliverConfirmOrder.id ? (statusNote || '').trim() : '';
+          void handleStatusUpdate(deliverConfirmOrder.id, 'delivered', note || undefined);
+          setDeliverConfirmOrder(null);
+        }}
+      />
     </div>
   );
 };
