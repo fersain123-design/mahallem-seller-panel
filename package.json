@@ -52,6 +52,7 @@
     "react-router-dom": "^6.22.3",
     "react-scripts": "5.0.1",
     "recharts": "^3.5.1",
+    "serve": "^14.2.6",
     "sonner": "^2.0.3",
     "tailwind-merge": "^3.2.0",
     "tailwindcss-animate": "^1.0.7",
@@ -59,7 +60,8 @@
     "zod": "^3.24.4"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "serve -s build",
+    "dev": "react-scripts start",
     "generate:tr-address": "node ./scripts/generate-tr-address-data.mjs",
     "build": "react-scripts build",
     "test": "react-scripts test"
