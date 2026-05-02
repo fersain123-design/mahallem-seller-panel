@@ -8,7 +8,7 @@ import { getAuthErrorMessage } from '../lib/authErrorMessage';
 export default function OtpVerificationScreen() {
   const location = useLocation();
   const navigate = useNavigate();
-  const phone = useMemo(() => String(location.state?.phone || '').trim(), [location.state]);
+  const email = useMemo(() => String(location.state?.email || '').trim().toLowerCase(), [location.state]);
 
   const [otpCode, setOtpCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,7 +21,7 @@ export default function OtpVerificationScreen() {
     setLoading(true);
 
     try {
-      const response = await authAPI.verifyOtp(phone, otpCode);
+      const response = await authAPI.verifyOtp(email, otpCode);
       const resetToken = response?.data?.data?.resetToken;
 
       if (!resetToken) {
@@ -30,7 +30,7 @@ export default function OtpVerificationScreen() {
 
       navigate('/reset-password', {
         state: {
-          phone,
+          email,
           resetToken,
         },
       });
@@ -46,7 +46,7 @@ export default function OtpVerificationScreen() {
     setResendLoading(true);
 
     try {
-      await authAPI.forgotPassword(phone);
+      await authAPI.forgotPassword(email);
     } catch (requestError) {
       setError(getAuthErrorMessage(requestError, 'Kod tekrar gönderilemedi.'));
     } finally {
@@ -54,12 +54,12 @@ export default function OtpVerificationScreen() {
     }
   };
 
-  if (!phone) {
+  if (!email) {
     return (
       <AuthSplitLayout left={<AuthQuotesPanel />}>
         <div className="min-h-[62vh] flex items-center">
           <div className="w-full max-w-md seller-surface p-6 sm:p-8">
-            <p className="text-sm text-text-secondary">Telefon numarası bulunamadı.</p>
+            <p className="text-sm text-text-secondary">E-posta bilgisi bulunamadı.</p>
             <button className="seller-btn-primary mt-5 w-full py-2.5" onClick={() => navigate('/forgot-password')}>
               Tekrar Başlat
             </button>
@@ -82,7 +82,7 @@ export default function OtpVerificationScreen() {
               ← Geri
             </button>
             <h1 className="text-xl font-semibold tracking-tight text-text-primary">Kod Doğrulama</h1>
-            <p className="text-sm text-text-secondary mt-1">Telefonunuza gelen 6 haneli doğrulama kodunu girin.</p>
+            <p className="text-sm text-text-secondary mt-1">E-postanıza gelen 6 haneli doğrulama kodunu girin.</p>
 
             {error ? (
               <div className="mt-5 rounded-xl border border-error/25 bg-error/5 p-4 text-error text-sm">{error}</div>

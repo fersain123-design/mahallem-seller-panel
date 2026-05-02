@@ -851,15 +851,15 @@ export const authAPI = {
     return apiClient.post('/api/auth/login', { email, password });
   },
 
-  forgotPassword: (phone: string) =>
-    apiClient.post('/api/auth/forgot-password', { phone }),
+  forgotPassword: (email: string) =>
+    apiClient.post('/api/auth/forgot-password', { email }),
 
-  verifyOtp: (phone: string, otpCode: string) =>
-    apiClient.post('/api/auth/verify-otp', { phone, otpCode }),
+  verifyOtp: (email: string, otpCode: string) =>
+    apiClient.post('/api/auth/verify-otp', { email, otpCode }),
 
-  resetPassword: (phone: string, resetToken: string, newPassword: string, confirmPassword: string) =>
+  resetPassword: (email: string, resetToken: string, newPassword: string, confirmPassword: string) =>
     apiClient.post('/api/auth/reset-password', {
-      phone,
+      email,
       resetToken,
       newPassword,
       confirmPassword,

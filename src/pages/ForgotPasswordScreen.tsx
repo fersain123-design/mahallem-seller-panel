@@ -7,7 +7,7 @@ import { getAuthErrorMessage } from '../lib/authErrorMessage';
 
 export default function ForgotPasswordScreen() {
   const navigate = useNavigate();
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -17,8 +17,9 @@ export default function ForgotPasswordScreen() {
     setLoading(true);
 
     try {
-      await authAPI.forgotPassword(phone);
-      navigate('/verify-otp', { state: { phone } });
+      const normalizedEmail = String(email || '').trim().toLowerCase();
+      await authAPI.forgotPassword(normalizedEmail);
+      navigate('/verify-otp', { state: { email: normalizedEmail } });
     } catch (requestError) {
       setError(getAuthErrorMessage(requestError, 'Doğrulama kodu gönderilemedi.'));
     } finally {
@@ -39,7 +40,7 @@ export default function ForgotPasswordScreen() {
               ← Geri
             </button>
             <h1 className="text-xl font-semibold tracking-tight text-text-primary">Şifremi Unuttum</h1>
-            <p className="text-sm text-text-secondary mt-1">Telefon numaranızı girin, doğrulama kodunu SMS ile gönderelim.</p>
+            <p className="text-sm text-text-secondary mt-1">E-posta adresinizi girin, doğrulama kodunu e-posta ile gönderelim.</p>
 
             {error ? (
               <div className="mt-5 rounded-xl border border-error/25 bg-error/5 p-4 text-error text-sm">{error}</div>
@@ -47,12 +48,13 @@ export default function ForgotPasswordScreen() {
 
             <form onSubmit={handleSubmit} className="space-y-5 mt-6">
               <div>
-                <label className="block text-sm font-medium text-text-primary mb-2">Telefon Numarası</label>
+                <label className="block text-sm font-medium text-text-primary mb-2">E-posta Adresi</label>
                 <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="seller-input"
-                  placeholder="05XXXXXXXXX"
+                  placeholder="ornek@domain.com"
                   required
                 />
               </div>

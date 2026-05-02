@@ -8,7 +8,7 @@ import { getAuthErrorMessage } from '../lib/authErrorMessage';
 export default function ResetPasswordScreen() {
   const location = useLocation();
   const navigate = useNavigate();
-  const phone = useMemo(() => String(location.state?.phone || '').trim(), [location.state]);
+  const email = useMemo(() => String(location.state?.email || '').trim().toLowerCase(), [location.state]);
   const resetToken = useMemo(() => String(location.state?.resetToken || '').trim(), [location.state]);
 
   const [newPassword, setNewPassword] = useState('');
@@ -34,7 +34,7 @@ export default function ResetPasswordScreen() {
     setLoading(true);
 
     try {
-      await authAPI.resetPassword(phone, resetToken, newPassword, confirmPassword);
+      await authAPI.resetPassword(email, resetToken, newPassword, confirmPassword);
       setIsSuccess(true);
     } catch (requestError) {
       setError(getAuthErrorMessage(requestError, 'Şifre güncellenemedi.'));
@@ -43,7 +43,7 @@ export default function ResetPasswordScreen() {
     }
   };
 
-  if (!phone || !resetToken) {
+  if (!email || !resetToken) {
     return (
       <AuthSplitLayout left={<AuthQuotesPanel />}>
         <div className="min-h-[62vh] flex items-center">
